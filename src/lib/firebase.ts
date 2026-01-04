@@ -13,9 +13,12 @@ const firebaseConfig = {
     measurementId: "G-F2TBQM7FBJ"
 };
 
+import { getStorage } from 'firebase/storage';
+
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 
 export type Profile = {
     id: string;
@@ -81,5 +84,49 @@ export type PaymentRequest = {
     created_at: string;
     processed_at?: string;
     processed_by?: string;
+};
+
+export type QuestionType = 'mcq' | 'essay';
+
+export type Question = {
+    id: string;
+    type: QuestionType;
+    text: string;
+    image_url?: string;
+    score: number;
+    options?: string[];
+    correct_options?: number[];
+};
+
+export type Exam = {
+    id: string;
+    title: string;
+    course_id?: string;
+    teacher_id: string;
+    questions: Question[];
+    is_paid: boolean;
+    price?: number;
+    grade?: string; // To filter standalone exams by grade if needed
+    max_attempts?: number;
+    expires_at?: string | null;
+    created_at: string;
+};
+
+export type ExamSubmission = {
+    id: string;
+    exam_id: string;
+    student_id: string;
+    answers: {
+        question_id: string;
+        selected_options?: number[];
+        essay_image_url?: string;
+        essay_text?: string;
+        score?: number; // Score for this specific question
+        feedback?: string;
+    }[];
+    status: 'pending' | 'graded';
+    total_score: number;
+    submitted_at: string;
+    graded_at?: string;
 };
 

@@ -9,6 +9,7 @@ import VideoPlayer from './pages/VideoPlayer';
 import Home from './pages/Home';
 import WalletRecharge from './pages/WalletRecharge';
 import StudentProfile from './pages/StudentProfile';
+import TakeExam from './pages/TakeExam';
 
 function App() {
   const { user, profile, loading } = useAuth();
@@ -71,6 +72,10 @@ function App() {
 
     if (currentPath.startsWith('/video/')) {
       return <VideoPlayer />;
+    }
+
+    if (currentPath.startsWith('/exam/')) {
+      return <TakeExam />;
     }
 
     // Default fallback for logged in users

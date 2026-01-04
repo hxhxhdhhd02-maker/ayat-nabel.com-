@@ -95,7 +95,7 @@ export default function Home() {
                                 دروس تفاعلية، متابعة مستمرة، ومحتوى يضمن لك الدرجة النهائية.
                             </p>
 
-                            <div className="flex flex-wrap gap-4 mb-8">
+                            <div className="flex flex-wrap items-center gap-4 mb-8">
                                 <button
                                     onClick={() => window.location.href = '/login'}
                                     className="px-8 py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 flex items-center gap-3 group"
@@ -103,9 +103,19 @@ export default function Home() {
                                     <span>ابدأ الآن مجاناً</span>
                                     <ArrowRight className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
                                 </button>
-                                <button className="px-8 py-4 bg-white dark:bg-slate-800 text-slate-700 dark:text-white border-2 border-slate-200 dark:border-slate-700 rounded-xl font-bold text-lg hover:border-blue-200 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all">
-                                    تعرف علينا
-                                </button>
+
+                                <a
+                                    href="/app-release.apk"
+                                    download
+                                    className="block transition-transform hover:scale-105"
+                                    title="حمل التطبيق الأن"
+                                >
+                                    <img
+                                        src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
+                                        alt="Get it on Google Play"
+                                        className="h-[60px] w-auto"
+                                    />
+                                </a>
                             </div>
 
                             <div className="flex items-center gap-8 text-slate-500 dark:text-slate-400">

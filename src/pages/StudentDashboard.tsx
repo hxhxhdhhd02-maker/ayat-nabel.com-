@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { db, Course, StudentEnrollment, Lecture, LectureProgress } from '../lib/firebase';
+import { db, Course, StudentEnrollment, Lecture, LectureProgress, Exam } from '../lib/firebase';
 import { collection, query, where, getDocs, documentId, addDoc, doc, updateDoc } from 'firebase/firestore';
-import { BookOpen, PlayCircle, CheckCircle, Clock, ShoppingCart, Moon, Sun } from 'lucide-react';
+import { BookOpen, PlayCircle, CheckCircle, Clock, ShoppingCart, Moon, Sun, ClipboardList, PenTool, Star, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import FloatingLetters from '../components/FloatingLetters';
 import NotificationBell from '../components/NotificationBell';
@@ -24,6 +24,8 @@ export default function StudentDashboard() {
   const [enrolledCourses, setEnrolledCourses] = useState<CourseWithProgress[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [lectures, setLectures] = useState<Lecture[]>([]);
+  const [courseExams, setCourseExams] = useState<Exam[]>([]);
+  const [availableExams, setAvailableExams] = useState<Exam[]>([]);
   const [progress, setProgress] = useState<LectureProgress[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,10 +33,32 @@ export default function StudentDashboard() {
     if (profile) {
       loadCourses();
       loadEnrolledCourses();
+      loadAvailableExams();
     }
   }, [profile]);
 
   // ... (keeping existing functions unchanged for brevity in this replacement block, but ensuring indentation)
+  async function loadAvailableExams() {
+    try {
+      // Load standalone exams for the student's grade
+      const q = query(
+        collection(db, 'exams'),
+        where('grade', '==', profile?.grade)
+        // We really want where('course_id', '==', null) but Firestore might be tricky with null equality in compound queries sometimes.
+        // For now, let's filter in client or trust the 'grade' filter since course-attached exams might not have 'grade' set or might have it set differently.
+        // Actually, our CreateExamModal sets 'grade' ONLY if it's standalone. So filtering by grade is correct.
+      );
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Exam));
+      // Filter out any that inadvertently have a course_id if the query captured them (though they shouldn't if we set grade only on standalone)
+      const standalone = data.filter(e => !e.course_id);
+      standalone.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setAvailableExams(standalone);
+    } catch (error) {
+      console.error('Error loading exams:', error);
+    }
+  }
+
   async function loadCourses() {
     try {
       const q = query(
@@ -139,6 +163,16 @@ export default function StudentDashboard() {
       const progressSnap = await getDocs(progressQ);
       const progressData = progressSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as LectureProgress));
       setProgress(progressData);
+
+      // Load Course Exams
+      const examsQ = query(
+        collection(db, 'exams'),
+        where('course_id', '==', courseId)
+      );
+      const examsSnap = await getDocs(examsQ);
+      const examsData = examsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Exam));
+      setCourseExams(examsData);
+
     } catch (error) {
       console.error('Error loading lectures:', error);
     }
@@ -411,6 +445,53 @@ export default function StudentDashboard() {
                   ))}
               </div>
             </div>
+
+            {/* Standalone Exams Section */}
+            {availableExams.length > 0 && (
+              <div className="mt-12">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl md:text-3xl font-black text-slate-900 dark:text-white" dir="rtl">
+                    الامتحانات العامة
+                    <span className="text-sm font-normal text-slate-500 dark:text-slate-400 mr-2">({availableExams.length})</span>
+                  </h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {availableExams.map((exam) => (
+                    <motion.div
+                      key={exam.id}
+                      whileHover={{ y: -5 }}
+                      className="glass bg-white/60 dark:bg-slate-800/60 rounded-3xl overflow-hidden hover:shadow-xl transition-all border border-purple-200 dark:border-purple-900 group"
+                    >
+                      <div className="p-6">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className={`px-3 py-1 rounded-lg text-sm font-bold ${exam.is_paid ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                            {exam.is_paid ? `${exam.price} ج.م` : 'مجاني'}
+                          </div>
+                          <ClipboardList className="w-6 h-6 text-purple-500" />
+                        </div>
+
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2" dir="rtl">{exam.title}</h3>
+                        <p className="text-slate-500 dark:text-slate-400 mb-6 text-sm" dir="rtl">
+                          {exam.questions.length} سؤال • {exam.questions.reduce((a, b) => a + b.score, 0)} درجة
+                        </p>
+
+                        <button
+                          onClick={() => {
+                            window.history.pushState({}, '', `/exam/${exam.id}`);
+                            window.dispatchEvent(new PopStateEvent('popstate'));
+                          }}
+                          className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-purple-500/30 flex items-center justify-center gap-2"
+                        >
+                          <PenTool className="w-5 h-5" />
+                          <span>ابدأ الامتحان</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div>
@@ -449,75 +530,154 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* Lectures List */}
-            <div className="space-y-4">
-              {lectures.map((lecture, index) => {
-                const lectureProgress = progress.find(p => p.lecture_id === lecture.id);
-                const isCompleted = lectureProgress?.completed || false;
 
-                return (
-                  <motion.div
-                    key={lecture.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="glass bg-white/60 dark:bg-slate-800/60 rounded-2xl p-6 border border-white/50 dark:border-slate-700/50 hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border-2 ${isCompleted
-                        ? 'bg-green-50 dark:bg-green-900/30 border-green-500 dark:border-green-400'
-                        : 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 dark:border-blue-400'
-                        }`}>
-                        {isCompleted ? (
-                          <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-                        ) : (
-                          <span className="text-blue-600 dark:text-blue-400 font-black text-lg">{index + 1}</span>
-                        )}
-                      </div>
+            {/* Course Content */}
+            <div className="space-y-10">
+              {/* Exams Section - Premium Redesign */}
+              {courseExams.length > 0 && (
+                <div className="relative">
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3" dir="rtl">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
+                      <ClipboardList className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <span>الاختبارات والامتحانات</span>
+                  </h3>
 
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2" dir="rtl">{lecture.title}</h3>
-                        <p className="text-slate-500 dark:text-slate-400 mb-4" dir="rtl">{lecture.description}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {courseExams.map((exam, index) => (
+                      <motion.div
+                        key={exam.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="group relative overflow-hidden bg-white dark:bg-slate-800 rounded-3xl p-1 z-0 hover:shadow-2xl transition-all duration-300"
+                      >
+                        {/* Gradient Border Effect */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500 via-indigo-500 to-blue-500 opacity-20 group-hover:opacity-100 transition-opacity duration-500 z-[-1]"></div>
 
-                        <div className="flex flex-wrap gap-3">
+                        <div className="h-full bg-white dark:bg-slate-900 rounded-[1.4rem] p-6 relative overflow-hidden">
+                          {/* Decorative Background */}
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 dark:bg-purple-500/10 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none"></div>
+
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-2xl">
+                              <PenTool className="w-8 h-8 text-purple-600 dark:text-purple-400" />
+                            </div>
+                            <div className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 dark:text-slate-400">
+                              امتحان {index + 1}
+                            </div>
+                          </div>
+
+                          <h4 className="text-xl font-black text-slate-800 dark:text-white mb-2 leading-tight" dir="rtl">
+                            {exam.title}
+                          </h4>
+
+                          <div className="flex flex-wrap gap-4 text-sm text-slate-600 dark:text-slate-400 mb-6" dir="rtl">
+                            <div className="flex items-center gap-1.5">
+                              <ClipboardList className="w-4 h-4 text-indigo-500" />
+                              <span className="font-bold">{exam.questions.length}</span> سوال
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Star className="w-4 h-4 text-yellow-500" />
+                              <span className="font-bold">{exam.questions.reduce((a, b) => a + b.score, 0)}</span> درجة
+                            </div>
+                          </div>
+
                           <button
-                            onClick={() => handleVideoClick(lecture.id)}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors text-sm font-bold"
+                            onClick={() => {
+                              window.history.pushState({}, '', `/exam/${exam.id}`);
+                              window.dispatchEvent(new PopStateEvent('popstate'));
+                            }}
+                            className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-purple-500/25 flex items-center justify-center gap-2 group-hover:-translate-y-1"
                           >
-                            <PlayCircle className="w-4 h-4" />
-                            <span>مشاهدة</span>
-                          </button>
-                          {lecture.pdf_url && (
-                            <a
-                              href={lecture.pdf_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-sm font-bold"
-                            >
-                              <BookOpen className="w-4 h-4" />
-                              <span>PDF</span>
-                            </a>
-                          )}
-                          <button
-                            onClick={() => toggleLectureCompletion(lecture.id, isCompleted)}
-                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-bold ${isCompleted
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
-                              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                              }`}
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            <span>{isCompleted ? 'تم المشاهدة' : 'حدد كمشاهد'}</span>
+                            <span>ابدأ الامتحان الآن</span>
+                            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
                           </button>
                         </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lectures List */}
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3" dir="rtl">
+                  <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
+                    <PlayCircle className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <span>محتوى الكورس</span>
+                </h3>
+                <div className="space-y-4">
+                  {lectures.map((lecture, index) => {
+                    const lectureProgress = progress.find(p => p.lecture_id === lecture.id);
+                    const isCompleted = lectureProgress?.completed || false;
+
+                    return (
+                      <motion.div
+                        key={lecture.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="glass bg-white/60 dark:bg-slate-800/60 rounded-2xl p-6 border border-white/50 dark:border-slate-700/50 hover:shadow-md transition-all"
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border-2 ${isCompleted
+                            ? 'bg-green-50 dark:bg-green-900/30 border-green-500 dark:border-green-400'
+                            : 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 dark:border-blue-400'
+                            }`}>
+                            {isCompleted ? (
+                              <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+                            ) : (
+                              <span className="text-blue-600 dark:text-blue-400 font-black text-lg">{index + 1}</span>
+                            )}
+                          </div>
+
+                          <div className="flex-1">
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2" dir="rtl">{lecture.title}</h3>
+                            <p className="text-slate-500 dark:text-slate-400 mb-4" dir="rtl">{lecture.description}</p>
+
+                            <div className="flex flex-wrap gap-3">
+                              <button
+                                onClick={() => handleVideoClick(lecture.id)}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors text-sm font-bold"
+                              >
+                                <PlayCircle className="w-4 h-4" />
+                                <span>مشاهدة</span>
+                              </button>
+                              {lecture.pdf_url && (
+                                <a
+                                  href={lecture.pdf_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-sm font-bold"
+                                >
+                                  <BookOpen className="w-4 h-4" />
+                                  <span>PDF</span>
+                                </a>
+                              )}
+                              <button
+                                onClick={() => toggleLectureCompletion(lecture.id, isCompleted)}
+                                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-bold ${isCompleted
+                                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
+                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                                  }`}
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                                <span>{isCompleted ? 'تم المشاهدة' : 'حدد كمشاهد'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 }

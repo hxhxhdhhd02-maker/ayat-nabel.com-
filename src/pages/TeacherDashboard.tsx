@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { db, Course, Lecture, Profile, StudentEnrollment } from '../lib/firebase';
+import { db, Course, Lecture, Profile, Exam, ExamSubmission } from '../lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
-import { Plus, Trash2, Search, Users, BookOpen, Video, FileText, LogOut, X, LayoutDashboard, Wallet, Moon, Sun } from 'lucide-react';
+import { Plus, Trash2, Search, Users, BookOpen, Video, FileText, LogOut, X, LayoutDashboard, Wallet, Moon, Sun, ClipboardList } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PaymentRequests from '../components/PaymentRequests';
+import CreateExamModal from '../components/CreateExamModal';
 
-type TabType = 'courses' | 'students' | 'payments';
+type TabType = 'courses' | 'students' | 'payments' | 'exams';
 
 export default function TeacherDashboard() {
   const { theme, toggleTheme } = useTheme();
@@ -15,6 +16,7 @@ export default function TeacherDashboard() {
   const { profile, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('courses');
   const [courses, setCourses] = useState<Course[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [students, setStudents] = useState<Profile[]>([]);
@@ -22,6 +24,10 @@ export default function TeacherDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [showLectureModal, setShowLectureModal] = useState(false);
+  const [showExamModal, setShowExamModal] = useState(false);
+  const [selectedExamForResults, setSelectedExamForResults] = useState<Exam | null>(null);
+  const [examSubmissions, setExamSubmissions] = useState<ExamSubmission[]>([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
 
 
 
@@ -29,6 +35,7 @@ export default function TeacherDashboard() {
     if (profile?.role === 'teacher') {
       loadCourses();
       loadStudents();
+      loadExams();
     }
   }, [profile?.role]);
 
@@ -43,6 +50,18 @@ export default function TeacherDashboard() {
       setCourses(data);
     } catch (error) {
       console.error('Error loading courses:', error);
+    }
+  }
+
+  async function loadExams() {
+    try {
+      const q = query(collection(db, 'exams'));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Exam));
+      data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setExams(data);
+    } catch (error) {
+      console.error('Error loading exams:', error);
     }
   }
 
@@ -211,6 +230,35 @@ export default function TeacherDashboard() {
     }
   }
 
+  async function handleDeleteExam(examId: string) {
+    if (!confirm('هل أنت متأكد من حذف هذا الامتحان؟ هذا سيحذف جميع إجابات الطلاب المرتبطة به.')) return;
+
+    try {
+      await deleteDoc(doc(db, 'exams', examId));
+      loadExams();
+    } catch (error) {
+      console.error('Error deleting exam:', error);
+      alert('حدث خطأ أثناء حذف الامتحان');
+    }
+  }
+
+  async function loadExamSubmissions(examId: string) {
+    setLoadingSubmissions(true);
+    try {
+      const q = query(collection(db, 'exam_submissions'), where('exam_id', '==', examId));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => doc.data() as ExamSubmission);
+      // Sort by score descending
+      data.sort((a, b) => b.total_score - a.total_score);
+      setExamSubmissions(data);
+    } catch (error) {
+      console.error('Error loading submissions:', error);
+      alert('حدث خطأ أثناء تحميل النتائج');
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  }
+
 
 
 
@@ -296,6 +344,16 @@ export default function TeacherDashboard() {
           >
             <Wallet className="w-5 h-5" />
             <span>طلبات الشحن</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('exams')}
+            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap ${activeTab === 'exams'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+              }`}
+          >
+            <ClipboardList className="w-5 h-5" />
+            <span>الامتحانات</span>
           </button>
         </div>
 
@@ -598,8 +656,191 @@ export default function TeacherDashboard() {
               <PaymentRequests />
             </motion.div>
           )}
+
+          {activeTab === 'exams' && (
+            <motion.div
+              key="exams"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+            >
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white" dir="rtl">بنك الأسئلة والامتحانات ({exams.length})</h2>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <button
+                    onClick={loadExams}
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white px-5 py-3 rounded-xl font-bold transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span className="hidden md:inline">تحديث</span>
+                  </button>
+                  <button
+                    onClick={() => setShowExamModal(true)}
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg hover:shadow-blue-500/30"
+                  >
+                    <Plus className="w-5 h-5" />
+                    <span>امتحان جديد</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {exams.map((exam) => (
+                  <motion.div
+                    key={exam.id}
+                    className="glass bg-white/60 dark:bg-slate-800/60 rounded-3xl overflow-hidden hover:shadow-xl transition-all border border-white/50 dark:border-slate-700/50 p-6 flex flex-col"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div className={`px-3 py-1 rounded-lg text-sm font-bold ${exam.is_paid ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                        {exam.is_paid ? `${exam.price} ج.م` : 'مجاني'}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteExam(exam.id)}
+                        className="text-red-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="mb-4">
+                      <button
+                        onClick={() => {
+                          setSelectedExamForResults(exam);
+                          loadExamSubmissions(exam.id);
+                        }}
+                        className="w-full py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <ClipboardList className="w-4 h-4" />
+                        عرض النتائج
+                      </button>
+                    </div>
+
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2" dir="rtl">{exam.title}</h3>
+
+                    <div className="flex-1" dir="rtl">
+                      {exam.course_id ? (
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-2 flex items-center gap-2">
+                          <BookOpen className="w-4 h-4" />
+                          تابع لكورس: {courses.find(c => c.id === exam.course_id)?.title || 'غير موجود'}
+                        </p>
+                      ) : (
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-2">
+                          {exam.grade?.replace(/_/g, ' ')}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400 mt-4">
+                        <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded flex items-center gap-1">
+                          {exam.questions.length} سؤال
+                        </span>
+                        <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded flex items-center gap-1">
+                          {exam.questions.reduce((sum, q) => sum + (q.score || 0), 0)} درجة
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Exam Results Modal */}
+          {selectedExamForResults && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-2xl font-black text-slate-800 dark:text-white" dir="rtl">
+                    نتائج امتحان: {selectedExamForResults.title}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setSelectedExamForResults(null);
+                      setExamSubmissions([]);
+                    }}
+                    className="bg-slate-100 dark:bg-slate-700 p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                  >
+                    <X className="w-6 h-6 text-slate-600 dark:text-slate-300" />
+                  </button>
+                </div>
+
+                {loadingSubmissions ? (
+                  <div className="flex justify-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : examSubmissions.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                    لا توجد إجابات لهذا الامتحان حتى الآن
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right" dir="rtl">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-sm">
+                          <th className="pb-4 font-bold">اسم الطالب</th>
+                          <th className="pb-4 font-bold">الدرجة</th>
+                          <th className="pb-4 font-bold">الحالة</th>
+                          <th className="pb-4 font-bold">تاريخ التسليم</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                        {examSubmissions.map((sub, idx) => {
+                          const student = students.find(s => s.id === sub.student_id);
+                          const maxScore = selectedExamForResults.questions.reduce((a, b) => a + (b.score || 0), 0);
+                          const percentage = Math.round((sub.total_score / maxScore) * 100);
+
+                          return (
+                            <tr key={idx} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                              <td className="py-4 font-bold text-slate-800 dark:text-white">
+                                {student?.full_name_arabic || 'طالب غير موجود'}
+                                {student && <div className="text-xs text-slate-400 font-normal mt-1">{student.phone_number}</div>}
+                              </td>
+                              <td className="py-4">
+                                <span className={`inline-block px-3 py-1 rounded-lg font-bold ${percentage >= 50 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                  {sub.total_score} / {maxScore} ({percentage}%)
+                                </span>
+                              </td>
+                              <td className="py-4">
+                                <span className={`text-sm ${sub.status === 'graded' ? 'text-green-600' : 'text-yellow-600'
+                                  }`}>
+                                  {sub.status === 'graded' ? 'تم التصحيح' : 'قيد المراجعة'}
+                                </span>
+                              </td>
+                              <td className="py-4 text-slate-500 dark:text-slate-400 text-sm">
+                                {new Date(sub.submitted_at).toLocaleDateString('ar-EG', {
+                                  day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+                                })}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+
         </AnimatePresence>
       </div>
+
+      {showExamModal && (
+        <CreateExamModal
+          onClose={() => setShowExamModal(false)}
+          onSuccess={() => {
+            setShowExamModal(false);
+            loadExams();
+          }}
+          courses={courses}
+        />
+      )}
 
       {
         showCourseModal && (
