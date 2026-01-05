@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { User, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, Profile } from '../lib/firebase';
 
@@ -7,8 +7,8 @@ type AuthContextType = {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (phone: string, password: string, fullName: string, grade: string) => Promise<void>;
   signIn: (phone: string, password: string) => Promise<void>;
+  signUp: (phone: string, password: string, fullName: string, grade: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -41,8 +41,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (docSnap.exists()) {
         setProfile(docSnap.data() as Profile);
       } else {
-        // Fallback: Check if this is the admin user (by checking current auth email/phone if possible, 
-        // or just recovering if we know it's a valid auth session)
         const currentUser = auth.currentUser;
         if (currentUser?.email?.startsWith('01228495250')) {
           console.log('⚠️ Admin profile missing, recreating...');
@@ -57,8 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
           await setDoc(docRef, adminProfile);
           setProfile(adminProfile);
-        } else {
-          console.log('❌ No profile found for user:', userId);
         }
       }
     } catch (error) {
@@ -68,16 +64,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function signIn(phone: string, password: string) {
+    const email = `${phone}@platform.local`;
+    await signInWithEmailAndPassword(auth, email, password);
+  }
+
   async function signUp(phone: string, password: string, fullName: string, grade: string) {
     const email = `${phone}@platform.local`;
-
-    // Create auth user
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
+    const userId = userCredential.user.uid;
 
-    // Create profile
-    const profileData: Profile = {
-      id: user.uid,
+    const newProfile: Profile = {
+      id: userId,
       phone_number: phone,
       full_name_arabic: fullName,
       grade: grade,
@@ -86,12 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString()
     };
 
-    await setDoc(doc(db, 'profiles', user.uid), profileData);
-  }
-
-  async function signIn(phone: string, password: string) {
-    const email = `${phone}@platform.local`;
-    await signInWithEmailAndPassword(auth, email, password);
+    await setDoc(doc(db, 'profiles', userId), newProfile);
+    setProfile(newProfile);
   }
 
   async function signOut() {
@@ -99,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

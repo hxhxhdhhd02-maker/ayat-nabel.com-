@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { db, storage, Exam, ExamSubmission } from '../lib/firebase';
+import { db, Exam, ExamSubmission } from '../lib/firebase';
 import { doc, getDoc, addDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { ArrowLeft, CheckCircle, Upload, X, Loader2, Save, Clock } from 'lucide-react';
+// Storage imports removed as we use direct URLs now
+import { ArrowLeft, CheckCircle, X, Loader2, Save, Clock } from 'lucide-react';
 
 export default function TakeExam() {
     const { profile } = useAuth();
@@ -16,8 +16,7 @@ export default function TakeExam() {
     // Map questionId -> { selected_options: number[], essay_file: File | null, essay_preview: string | null }
     const [answers, setAnswers] = useState<Record<string, {
         selected_options: number[];
-        essay_file: File | null;
-        essay_preview: string | null;
+        essay_url: string;
     }>>({});
 
     useEffect(() => {
@@ -40,8 +39,7 @@ export default function TakeExam() {
                 examData.questions.forEach(q => {
                     initialAnswers[q.id] = {
                         selected_options: [],
-                        essay_file: null,
-                        essay_preview: null
+                        essay_url: ''
                     };
                 });
                 setAnswers(initialAnswers);
@@ -119,18 +117,14 @@ export default function TakeExam() {
         });
     };
 
-    const handleFileChange = (questionId: string, file: File) => {
-        if (file) {
-            const previewUrl = URL.createObjectURL(file);
-            setAnswers(prev => ({
-                ...prev,
-                [questionId]: {
-                    ...prev[questionId],
-                    essay_file: file,
-                    essay_preview: previewUrl
-                }
-            }));
-        }
+    const handleUrlChange = (questionId: string, url: string) => {
+        setAnswers(prev => ({
+            ...prev,
+            [questionId]: {
+                ...prev[questionId],
+                essay_url: url
+            }
+        }));
     };
 
     const handleSubmit = async () => {
@@ -145,19 +139,7 @@ export default function TakeExam() {
 
             for (const q of exam.questions) {
                 const ans = answers[q.id];
-                let essayUrl: string | null = null;
-
-                // Upload Essay Image if exists
-                if (q.type === 'essay' && ans.essay_file) {
-                    try {
-                        const storageRef = ref(storage, `exam_submissions/${profile.id}/${exam.id}/${q.id}_${Date.now()}`);
-                        const snapshot = await uploadBytes(storageRef, ans.essay_file);
-                        essayUrl = await getDownloadURL(snapshot.ref);
-                    } catch (uploadError) {
-                        console.error('Image upload failed:', uploadError);
-                        throw new Error('فشل رفع صورة الإجابة. تأكد من اتصال الإنترنت وحاول مرة أخرى.');
-                    }
-                }
+                const essayUrl = ans.essay_url;
 
                 let questionScore = 0;
                 if (q.type === 'mcq') {
@@ -322,37 +304,31 @@ export default function TakeExam() {
 
                             {q.type === 'essay' && (
                                 <div className="space-y-4">
-                                    <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-8 text-center transition-colors hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10">
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(e) => e.target.files?.[0] && handleFileChange(q.id, e.target.files[0])}
-                                            className="hidden"
-                                            id={`file-${q.id}`}
-                                        />
-                                        <label htmlFor={`file-${q.id}`} className="cursor-pointer flex flex-col items-center gap-2">
-                                            <Upload className="w-8 h-8 text-slate-400" />
-                                            <span className="text-slate-600 dark:text-slate-300 font-bold">ارفاق صورة الإجابة</span>
-                                            <span className="text-xs text-slate-400">اضغط لرفع صورة من جهازك</span>
-                                        </label>
+                                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+                                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">رابط صورة الإجابة:</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="ضع رابط الصورة هنا (Google Drive, Imgur, etc.)"
+                                                className="flex-1 p-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-white"
+                                                value={answers[q.id]?.essay_url || ''}
+                                                onChange={(e) => handleUrlChange(q.id, e.target.value)}
+                                            />
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-2">
+                                            يمكنك رفع الصورة على أي موقع خارجي ونسخ الرابط هنا.
+                                        </p>
                                     </div>
 
-                                    {answers[q.id]?.essay_preview && (
-                                        <div className="relative inline-block">
+                                    {answers[q.id]?.essay_url && (
+                                        <div className="relative inline-block mt-4">
+                                            <p className="text-sm font-bold mb-2">معاينة:</p>
                                             <img
-                                                src={answers[q.id].essay_preview!}
+                                                src={answers[q.id].essay_url}
                                                 alt="Preview"
+                                                onError={(e) => (e.currentTarget.style.display = 'none')}
                                                 className="max-h-60 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm"
                                             />
-                                            <button
-                                                onClick={() => setAnswers(prev => ({
-                                                    ...prev,
-                                                    [q.id]: { ...prev[q.id], essay_file: null, essay_preview: null }
-                                                }))}
-                                                className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600 transition-colors"
-                                            >
-                                                <X className="w-4 h-4" />
-                                            </button>
                                         </div>
                                     )}
                                 </div>

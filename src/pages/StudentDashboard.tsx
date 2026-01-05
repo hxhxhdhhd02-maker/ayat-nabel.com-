@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { db, Course, StudentEnrollment, Lecture, LectureProgress, Exam } from '../lib/firebase';
-import { collection, query, where, getDocs, documentId, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, documentId, addDoc, doc, updateDoc, arrayUnion, increment } from 'firebase/firestore';
 import { BookOpen, PlayCircle, CheckCircle, Clock, ShoppingCart, Moon, Sun, ClipboardList, PenTool, Star, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import FloatingLetters from '../components/FloatingLetters';
@@ -40,18 +40,50 @@ export default function StudentDashboard() {
   // ... (keeping existing functions unchanged for brevity in this replacement block, but ensuring indentation)
   async function loadAvailableExams() {
     try {
-      // Load standalone exams for the student's grade
-      const q = query(
-        collection(db, 'exams'),
-        where('grade', '==', profile?.grade)
-        // We really want where('course_id', '==', null) but Firestore might be tricky with null equality in compound queries sometimes.
-        // For now, let's filter in client or trust the 'grade' filter since course-attached exams might not have 'grade' set or might have it set differently.
-        // Actually, our CreateExamModal sets 'grade' ONLY if it's standalone. So filtering by grade is correct.
-      );
+      console.log('Loading exams for grade (raw):', profile?.grade);
+
+      // Mapping for legacy Arabic grades to new English keys
+      const gradeMap: Record<string, string> = {
+        'اول_اعدادي': 'first_prep',
+        'تاني_اعدادي': 'second_prep',
+        'تالت_اعدادي': 'third_prep',
+        'اول_ثانوي': 'first_sec',
+        'تاني_ثانوي': 'second_sec',
+        'تالت_ثانوي': 'third_sec'
+      };
+
+      // Determine the grade to query
+      let queryGrade = profile?.grade;
+
+      // If profile has Arabic grade, convert it
+      if (queryGrade && gradeMap[queryGrade]) {
+        queryGrade = gradeMap[queryGrade];
+      }
+
+      console.log('Querying exams for normalized grade:', queryGrade);
+
+      let q;
+      if (queryGrade === 'all' || !queryGrade) {
+        // Admin or no grade: Show ALL exams
+        q = query(collection(db, 'exams'));
+      } else {
+        // Student: Show specific grade exams
+        q = query(
+          collection(db, 'exams'),
+          where('grade', '==', queryGrade)
+        );
+      }
+
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Exam));
-      // Filter out any that inadvertently have a course_id if the query captured them (though they shouldn't if we set grade only on standalone)
+
+      console.log('Raw exams fetched:', data.length);
+
+      // Filter out any that inadvertently have a course_id
       const standalone = data.filter(e => !e.course_id);
+
+      console.log('Standalone exams after filter:', standalone.length);
+
       standalone.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setAvailableExams(standalone);
     } catch (error) {
@@ -255,6 +287,48 @@ export default function StudentDashboard() {
     }
   }
 
+  async function handleExamEntry(exam: Exam) {
+    if (!profile) return;
+
+    // 1. If exam is free or user already purchased it => Enter
+    if (!exam.is_paid || (profile.purchased_exams && profile.purchased_exams.includes(exam.id))) {
+      window.history.pushState({}, '', `/exam/${exam.id}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      return;
+    }
+
+    // 2. Exam is paid and not purchased => Check Balance
+    if (profile.wallet_balance < exam.price) {
+      alert(`عفواً، رصيدك غير كافٍ. سعر الامتحان ${exam.price} ج.م ورصيدك الحالي ${profile.wallet_balance} ج.م.\nيرجى شحن محفظتك.`);
+      return;
+    }
+
+    // 3. Confirm Purchase
+    const confirm = window.confirm(`هذا الامتحان مدفوع.\nالسعر: ${exam.price} ج.م\nسيتم خصم المبلغ من محفظتك. هل تريد المتابعة؟`);
+    if (!confirm) return;
+
+    // 4. Deduct Balance & Add to Purchased
+    try {
+      const userRef = doc(db, 'profiles', profile.id);
+      await updateDoc(userRef, {
+        wallet_balance: increment(-exam.price),
+        purchased_exams: arrayUnion(exam.id)
+      });
+
+      // Update local profile state manually to reflect changes immediately without reload
+      // (Assuming AuthContext might take a moment or needs reload)
+      // Actually, AuthContext should ideally listen to changes, but let's force a reload for safety or rely on context
+      // For UX speed:
+      alert('تم شراء الامتحان بنجاح! جاري الدخول...');
+      window.history.pushState({}, '', `/exam/${exam.id}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      window.location.reload(); // Reload to refresh profile context just in case
+    } catch (error) {
+      console.error('Purchase failed:', error);
+      alert('حدث خطأ أثناء عملية الشراء. حاول مرة أخرى.');
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
@@ -275,12 +349,12 @@ export default function StudentDashboard() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button
+              <div
                 onClick={() => {
                   window.history.pushState({}, '', '/profile');
                   window.dispatchEvent(new PopStateEvent('popstate'));
                 }}
-                className="flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-700 p-2 rounded-xl transition-colors"
+                className="flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-700 p-2 rounded-xl transition-colors cursor-pointer"
                 dir="rtl"
               >
                 <ProfileImage size="md" showInfo={true} />
@@ -290,7 +364,7 @@ export default function StudentDashboard() {
                   </h1>
                   <p className="text-sm text-slate-500 dark:text-slate-400">{profile?.grade?.replace(/_/g, ' ')}</p>
                 </div>
-              </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 md:gap-3">
@@ -447,15 +521,15 @@ export default function StudentDashboard() {
             </div>
 
             {/* Standalone Exams Section */}
-            {availableExams.length > 0 && (
-              <div className="mt-12">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl md:text-3xl font-black text-slate-900 dark:text-white" dir="rtl">
-                    الامتحانات العامة
-                    <span className="text-sm font-normal text-slate-500 dark:text-slate-400 mr-2">({availableExams.length})</span>
-                  </h2>
-                </div>
+            <div className="mt-12">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl md:text-3xl font-black text-slate-900 dark:text-white" dir="rtl">
+                  الامتحانات العامة
+                  <span className="text-sm font-normal text-slate-500 dark:text-slate-400 mr-2">({availableExams.length})</span>
+                </h2>
+              </div>
 
+              {availableExams.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {availableExams.map((exam) => (
                     <motion.div
@@ -477,21 +551,35 @@ export default function StudentDashboard() {
                         </p>
 
                         <button
-                          onClick={() => {
-                            window.history.pushState({}, '', `/exam/${exam.id}`);
-                            window.dispatchEvent(new PopStateEvent('popstate'));
-                          }}
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-purple-500/30 flex items-center justify-center gap-2"
+                          onClick={() => handleExamEntry(exam)}
+                          className={`w-full text-white py-3 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 ${exam.is_paid && (!profile?.purchased_exams?.includes(exam.id))
+                              ? 'bg-yellow-600 hover:bg-yellow-700 hover:shadow-yellow-500/30'
+                              : 'bg-purple-600 hover:bg-purple-700 hover:shadow-purple-500/30'
+                            }`}
                         >
-                          <PenTool className="w-5 h-5" />
-                          <span>ابدأ الامتحان</span>
+                          {exam.is_paid && (!profile?.purchased_exams?.includes(exam.id)) ? (
+                            <>
+                              <ShoppingCart className="w-5 h-5" />
+                              <span>شراء الآن ({exam.price} ج.م)</span>
+                            </>
+                          ) : (
+                            <>
+                              <PenTool className="w-5 h-5" />
+                              <span>ابدأ الامتحان</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </motion.div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="text-center py-12 bg-white/50 dark:bg-slate-800/50 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
+                  <ClipboardList className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                  <p className="text-slate-500 dark:text-slate-400 font-bold">لا توجد امتحانات متاحة حالياً لصفك الدراسي</p>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div>

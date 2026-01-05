@@ -58,7 +58,7 @@ export default function CreateExamModal({ onClose, onSuccess, courses }: CreateE
         const currentCorrect = newQuestions[qIndex].correct_options || [];
 
         if (currentCorrect.includes(oIndex)) {
-            newQuestions[qIndex].correct_options = currentCorrect.filter(i => i !== oIndex);
+            newQuestions[qIndex].correct_options = currentCorrect.filter((i: number) => i !== oIndex);
         } else {
             newQuestions[qIndex].correct_options = [...currentCorrect, oIndex];
         }
@@ -88,7 +88,7 @@ export default function CreateExamModal({ onClose, onSuccess, courses }: CreateE
             if (q.type === 'mcq') {
                 const options = q.options || [];
                 // Check if options exist and are not empty strings
-                if (options.some(o => !o || !o.trim())) {
+                if (options.some((o: string) => !o || !o.trim())) {
                     return alert(`جميع الاختيارات مطلوبة في السؤال رقم ${i + 1}`);
                 }
                 if (!q.correct_options || q.correct_options.length === 0) {
@@ -188,12 +188,12 @@ export default function CreateExamModal({ onClose, onSuccess, courses }: CreateE
                                     className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-600 dark:text-white"
                                 >
                                     <option value="">-- اختر الصف --</option>
-                                    <option value="اول_اعدادي">اول اعدادي</option>
-                                    <option value="تاني_اعدادي">تاني اعدادي</option>
-                                    <option value="تالت_اعدادي">تالت اعدادي</option>
-                                    <option value="اول_ثانوي">اول ثانوي</option>
-                                    <option value="تاني_ثانوي">تاني ثانوي</option>
-                                    <option value="تالت_ثانوي">تالت ثانوي</option>
+                                    <option value="first_prep">اول اعدادي</option>
+                                    <option value="second_prep">تاني اعدادي</option>
+                                    <option value="third_prep">تالت اعدادي</option>
+                                    <option value="first_sec">اول ثانوي</option>
+                                    <option value="second_sec">تاني ثانوي</option>
+                                    <option value="third_sec">تالت ثانوي</option>
                                 </select>
                             </div>
                         )}
@@ -325,7 +325,7 @@ export default function CreateExamModal({ onClose, onSuccess, courses }: CreateE
 
                                     {q.type === 'mcq' && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                                            {q.options?.map((option, oIndex) => (
+                                            {q.options?.map((option: string, oIndex: number) => (
                                                 <div key={oIndex} className="flex items-center gap-3">
                                                     <button
                                                         onClick={() => toggleCorrectOption(qIndex, oIndex)}

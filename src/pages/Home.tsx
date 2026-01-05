@@ -1,14 +1,21 @@
 import { motion } from 'framer-motion';
 import FloatingLetters from '../components/FloatingLetters';
-import { ArrowRight, Star, Shield, Users, Moon, Sun } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Star, Shield, Users, Moon, Sun, Languages } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
 
 export default function Home() {
+    const { t, i18n } = useTranslation();
     const { theme, toggleTheme } = useTheme();
     const isDark = theme === 'dark';
+    const isRTL = i18n.language === 'ar';
+
+    const toggleLanguage = () => {
+        i18n.changeLanguage(i18n.language === 'en' ? 'ar' : 'en');
+    };
 
     return (
-        <div className={`min-h-screen relative overflow-hidden ${isDark ? 'dark bg-slate-900' : 'bg-slate-50'}`}>
+        <div className={`min-h-screen relative overflow-hidden ${isDark ? 'dark bg-slate-900' : 'bg-slate-50'}`} dir={isRTL ? 'rtl' : 'ltr'}>
             <FloatingLetters />
 
             {/* Navigation */}
@@ -22,6 +29,13 @@ export default function Home() {
                     </div>
                     <div className="flex gap-4 items-center">
                         <button
+                            onClick={toggleLanguage}
+                            className="p-2 rounded-full bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+                            title={isRTL ? "Switch to English" : "تغيير للعربية"}
+                        >
+                            <Languages className={`w-5 h-5 ${isDark ? 'text-white' : 'text-slate-600'}`} />
+                        </button>
+                        <button
                             onClick={toggleTheme}
                             className="p-2 rounded-full bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
                         >
@@ -31,7 +45,7 @@ export default function Home() {
                             onClick={() => window.location.href = '/login'}
                             className="px-6 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 transition-all"
                         >
-                            تسجيل الدخول
+                            {t('login')}
                         </button>
                     </div>
                 </div>
@@ -54,14 +68,14 @@ export default function Home() {
                             <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-blue-600 dark:border-blue-500">
                                 <img
                                     src="/teacher.png"
-                                    alt="مستر ايات نبيل"
+                                    alt="Dr. Ayat Nabil"
                                     className="w-full h-full object-cover"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
-                                <div className="absolute bottom-8 right-8 text-white text-right" dir="rtl">
-                                    <h2 className="text-4xl font-black mb-2">Dr/ ايات نبيل</h2>
-                                    <p className="text-xl text-blue-300 font-bold mb-1">خبيره اللغة الإنجليزية</p>
-                                    <p className="text-white/90">معلمة معتمدة • +10 سنوات خبرة</p>
+                                <div className={`absolute bottom-8 text-white ${isRTL ? 'right-8 text-right' : 'left-8 text-left'}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                                    <h2 className="text-4xl font-black mb-2">{t('teacher_title')}</h2>
+                                    <p className="text-xl text-blue-300 font-bold mb-1">{t('teacher_subtitle')}</p>
+                                    <p className="text-white/90">{t('teacher_exp')}</p>
                                 </div>
                             </div>
 
@@ -76,23 +90,21 @@ export default function Home() {
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ duration: 0.8, delay: 0.2 }}
                             className="relative z-10 order-1 lg:order-2"
-                            dir="rtl"
                         >
                             <span className="inline-block px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-sm font-semibold mb-6">
-                                ✨ منصة تعليمية متطورة
+                                {t('educational_platform')}
                             </span>
                             <h1 className="text-3xl md:text-5xl lg:text-6xl font-black text-slate-900 dark:text-white leading-tight mb-6">
-                                ابداً رحلة التفوق في
+                                {t('start_journey')}{' '}
                                 <span className="text-blue-600 dark:text-blue-400 relative inline-block mr-4">
-                                    اللغة الإنجليزية
+                                    {t('english_language')}
                                     <svg className="absolute w-full h-3 -bottom-1 left-0 text-yellow-400 opacity-50" viewBox="0 0 100 10" preserveAspectRatio="none">
                                         <path d="M0 5 Q 50 10 100 5" stroke="currentColor" strokeWidth="8" fill="none" />
                                     </svg>
                                 </span>
                             </h1>
                             <p className="text-lg md:text-xl text-slate-600 dark:text-slate-300 mb-8 leading-relaxed">
-                                تجربة تعليمية فريدة تجمع بين التكنولوجيا الحديثة وأساليب التدريس المبتكرة.
-                                دروس تفاعلية، متابعة مستمرة، ومحتوى يضمن لك الدرجة النهائية.
+                                {t('hero_description')}
                             </p>
 
                             <div className="flex flex-wrap items-center gap-4 mb-8">
@@ -100,15 +112,15 @@ export default function Home() {
                                     onClick={() => window.location.href = '/login'}
                                     className="px-8 py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 flex items-center gap-3 group"
                                 >
-                                    <span>ابدأ الآن مجاناً</span>
-                                    <ArrowRight className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+                                    <span>{t('start_now_free')}</span>
+                                    {isRTL ? <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" /> : <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
                                 </button>
 
                                 <a
                                     href="/app-release.apk"
                                     download
                                     className="block transition-transform hover:scale-105"
-                                    title="حمل التطبيق الأن"
+                                    title={t('download_app')}
                                 >
                                     <img
                                         src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
@@ -121,15 +133,15 @@ export default function Home() {
                             <div className="flex items-center gap-8 text-slate-500 dark:text-slate-400">
                                 <div className="flex items-center gap-2">
                                     <Users className="w-5 h-5 text-blue-500" />
-                                    <span>+1000 طالب</span>
+                                    <span>{t('students_count')}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <Star className="w-5 h-5 text-yellow-500" />
-                                    <span>4.9 تقييم</span>
+                                    <span>{t('rating')}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <Shield className="w-5 h-5 text-green-500" />
-                                    <span>محتوى معتمد</span>
+                                    <span>{t('certified_content')}</span>
                                 </div>
                             </div>
                         </motion.div>

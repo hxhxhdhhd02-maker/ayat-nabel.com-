@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
     apiKey: "AIzaSyAB57tFOgnL0SeQ569m-uyKAYP3HDWd1eg",
@@ -13,9 +14,8 @@ const firebaseConfig = {
     measurementId: "G-F2TBQM7FBJ"
 };
 
-import { getStorage } from 'firebase/storage';
-
 const app = initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
@@ -29,6 +29,7 @@ export type Profile = {
     role: 'student' | 'teacher';
     wallet_balance: number;
     profile_image?: string;
+    purchased_exams?: string[];
     created_at: string;
 };
 
@@ -55,24 +56,6 @@ export type Lecture = {
     created_at: string;
 };
 
-export type StudentEnrollment = {
-    id: string;
-    student_id: string;
-    course_id: string;
-    activated_by: string;
-    activated_at: string;
-    expires_at: string | null;
-};
-
-export type LectureProgress = {
-    id: string;
-    student_id: string;
-    lecture_id: string;
-    watched_seconds: number;
-    completed: boolean;
-    last_watched_at: string;
-};
-
 export type PaymentRequest = {
     id: string;
     student_id: string;
@@ -92,8 +75,8 @@ export type Question = {
     id: string;
     type: QuestionType;
     text: string;
-    image_url?: string;
     score: number;
+    image_url?: string;
     options?: string[];
     correct_options?: number[];
 };
@@ -101,12 +84,12 @@ export type Question = {
 export type Exam = {
     id: string;
     title: string;
-    course_id?: string;
     teacher_id: string;
-    questions: Question[];
+    course_id?: string | null;
+    grade?: string | null;
     is_paid: boolean;
-    price?: number;
-    grade?: string; // To filter standalone exams by grade if needed
+    price: number;
+    questions: Question[];
     max_attempts?: number;
     expires_at?: string | null;
     created_at: string;
@@ -120,13 +103,29 @@ export type ExamSubmission = {
         question_id: string;
         selected_options?: number[];
         essay_image_url?: string;
-        essay_text?: string;
-        score?: number; // Score for this specific question
-        feedback?: string;
+        score?: number;
     }[];
     status: 'pending' | 'graded';
     total_score: number;
     submitted_at: string;
     graded_at?: string;
+    graded_by?: string;
 };
 
+export type StudentEnrollment = {
+    id: string;
+    student_id: string;
+    course_id: string;
+    activated_by: string;
+    activated_at: string;
+    expires_at: string | null;
+};
+
+export type LectureProgress = {
+    id: string;
+    student_id: string;
+    lecture_id: string;
+    watched_seconds: number;
+    completed: boolean;
+    last_watched_at: string;
+};
